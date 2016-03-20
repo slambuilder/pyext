@@ -1,9 +1,15 @@
 #include "pch.h"
 #include "PyDebugHelpers.h"
 
-/*
-A built-in help for the extension dll
-*/
+using namespace System;
+
+void ManagedTest()
+{
+
+    System::Console::WriteLine("Module initialized.");
+}
+
+// A built-in help for the extension dll
 HRESULT CALLBACK help(IDebugClient5 *pClient, PCSTR args)
 {
     UNREFERENCED_PARAMETER(args);
@@ -70,6 +76,7 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
             HR_THROWIFFAIL(hr);
         }
 
+        ManagedTest();
     }
     catch (ExtException ex)
     {
@@ -78,3 +85,4 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
 
     return hr;
 }
+
