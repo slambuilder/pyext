@@ -170,6 +170,14 @@
   <ItemGroup>
     <None Include="py.def" />
   </ItemGroup>
+  <ItemGroup>
+    <Reference Include="IronPython">
+      <HintPath>..\..\..\IronPython-2.7.5\IronPython.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Scripting">
+      <HintPath>..\..\..\IronPython-2.7.5\Microsoft.Scripting.dll</HintPath>
+    </Reference>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

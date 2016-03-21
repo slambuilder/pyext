@@ -2,9 +2,58 @@
 #include "PyDebugHelpers.h"
 
 using namespace System;
+using namespace IronPython;
+using namespace IronPython::Hosting;
+
+ref class AppDomainCustomResolve
+{
+public:
+    static AppDomainCustomResolve()
+    {
+        auto currentDomain = System::AppDomain::CurrentDomain;
+
+        currentDomain->AssemblyResolve += gcnew System::ResolveEventHandler(AppDomainCustomResolve::OnAssemblyResolve);
+    }
+
+    static System::Reflection::Assembly^ OnAssemblyResolve(Object^ sender, ResolveEventArgs^ args)
+    {
+        System::Console::WriteLine("Request to resolve assembly: " + args->Name);
+        if (args->Name->StartsWith("IronPython,")) {
+            System::Reflection::Assembly^ pythonAssembly = System::Reflection::Assembly::LoadFrom("e:\\IronPython-2.7.5\\IronPython.dll");
+            return pythonAssembly;
+        }
+        else if (args->Name->StartsWith("Microsoft.Scripting,")) {
+            System::Reflection::Assembly^ pythonAssembly = System::Reflection::Assembly::LoadFrom("e:\\IronPython-2.7.5\\Microsoft.Scripting.dll");
+            return pythonAssembly;
+        }
+        return nullptr;
+    }
+};
+
+void InitializeAppDomainResolve()
+{
+    AppDomainCustomResolve^ setup = gcnew AppDomainCustomResolve();
+}
 
 void ManagedTest()
 {
+    Microsoft::Scripting::Hosting::ScriptEngine^ scriptEngine = nullptr;
+
+    try
+    {
+        scriptEngine = IronPython::Hosting::Python::CreateEngine();
+        System::Object^ obj = scriptEngine->Execute("2 + 2");
+
+        System::String ^str = obj->ToString();
+        System::Console::WriteLine(str);
+    }
+    finally
+    {
+        if (scriptEngine)
+        {
+            delete scriptEngine;
+        }
+    }
 
     System::Console::WriteLine("Module initialized.");
 }
@@ -76,6 +125,7 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
             HR_THROWIFFAIL(hr);
         }
 
+        InitializeAppDomainResolve();
         ManagedTest();
     }
     catch (ExtException ex)
