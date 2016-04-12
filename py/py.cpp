@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "PyDebugHelpers.h"
+#include "WindowsUtils.h"
 
 using namespace System;
 using namespace IronPython;
@@ -7,32 +8,59 @@ using namespace IronPython::Hosting;
 
 ref class AppDomainCustomResolve
 {
+private:
+	static String^ s_ironPythonInstallPath;
+
 public:
     static AppDomainCustomResolve()
     {
         auto currentDomain = System::AppDomain::CurrentDomain;
 
         currentDomain->AssemblyResolve += gcnew System::ResolveEventHandler(AppDomainCustomResolve::OnAssemblyResolve);
-    }
+
+		std::wstring productCode;
+		DWORD dwInstalledContext;
+		std::wstring userSid;
+		if (WindowsUtils::TryFindIronPythonProductCode(productCode, dwInstalledContext, userSid))
+		{
+			std::wstring installedLocation;
+			if (WindowsUtils::TryFindInstalledLocation(productCode, dwInstalledContext, userSid, installedLocation))
+			{
+				s_ironPythonInstallPath = gcnew String(installedLocation.c_str());
+			}
+		}
+	}
 
     static System::Reflection::Assembly^ OnAssemblyResolve(Object^ sender, ResolveEventArgs^ args)
     {
-        System::Console::WriteLine("Request to resolve assembly: " + args->Name);
-        if (args->Name->StartsWith("IronPython,")) {
-            System::Reflection::Assembly^ pythonAssembly = System::Reflection::Assembly::LoadFrom("e:\\IronPython-2.7.5\\IronPython.dll");
+        if (args->Name->StartsWith("IronPython,") && s_ironPythonInstallPath != nullptr) {
+            System::Reflection::Assembly^ pythonAssembly = 
+				System::Reflection::Assembly::LoadFrom(s_ironPythonInstallPath + "\\IronPython.dll");
             return pythonAssembly;
         }
-        else if (args->Name->StartsWith("Microsoft.Scripting,")) {
-            System::Reflection::Assembly^ pythonAssembly = System::Reflection::Assembly::LoadFrom("e:\\IronPython-2.7.5\\Microsoft.Scripting.dll");
-            return pythonAssembly;
+        else if (args->Name->StartsWith("Microsoft.Scripting,") && s_ironPythonInstallPath != nullptr) {
+            System::Reflection::Assembly^ msScriptingAssembly = 
+				System::Reflection::Assembly::LoadFrom(s_ironPythonInstallPath + "\\Microsoft.Scripting.dll");
+            return msScriptingAssembly;
         }
-        return nullptr;
+		else if (args->Name->StartsWith("Microsoft.Dynamic,") && s_ironPythonInstallPath != nullptr) {
+			System::Reflection::Assembly^ msDynamicAssembly =
+				System::Reflection::Assembly::LoadFrom(s_ironPythonInstallPath + "\\Microsoft.Dynamic.dll");
+			return msDynamicAssembly;
+		}
+		return nullptr;
     }
 };
 
 void InitializeAppDomainResolve()
 {
-    AppDomainCustomResolve^ setup = gcnew AppDomainCustomResolve();
+	static bool s_initialized = false;
+
+	if (!s_initialized)
+	{
+		AppDomainCustomResolve^ setup = gcnew AppDomainCustomResolve();
+		s_initialized = true;
+	}
 }
 
 void ManagedTest()
@@ -54,8 +82,6 @@ void ManagedTest()
             delete scriptEngine;
         }
     }
-
-    System::Console::WriteLine("Module initialized.");
 }
 
 // A built-in help for the extension dll
@@ -127,6 +153,7 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
 
         InitializeAppDomainResolve();
         ManagedTest();
+
     }
     catch (ExtException ex)
     {
