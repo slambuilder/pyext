@@ -3,8 +3,22 @@
 #include "WindowsUtils.h"
 
 using namespace System;
+using namespace System::Dynamic;
+using namespace System::IO;
+using namespace System::Reflection;
 using namespace IronPython;
 using namespace IronPython::Hosting;
+
+using namespace System::Runtime::InteropServices;
+
+private ref class PyExtensionGlobals : public IDynamicMetaObjectProvider
+{
+public:
+    virtual DynamicMetaObject^ GetMetaObject(System::Linq::Expressions::Expression^ parameter)
+    {
+        return nullptr;
+    }
+};
 
 ref class AppDomainCustomResolve
 {
@@ -14,9 +28,9 @@ private:
 public:
     static AppDomainCustomResolve()
     {
-        auto currentDomain = System::AppDomain::CurrentDomain;
+        auto currentDomain = AppDomain::CurrentDomain;
 
-        currentDomain->AssemblyResolve += gcnew System::ResolveEventHandler(AppDomainCustomResolve::OnAssemblyResolve);
+        currentDomain->AssemblyResolve += gcnew ResolveEventHandler(AppDomainCustomResolve::OnAssemblyResolve);
 
 		std::wstring productCode;
 		DWORD dwInstalledContext;
@@ -29,23 +43,32 @@ public:
 				s_ironPythonInstallPath = gcnew String(installedLocation.c_str());
 			}
 		}
+
+        if (!s_ironPythonInstallPath)
+        {
+            // use current assembly location to load local IronPython modules
+            auto codeBase = Assembly::GetExecutingAssembly()->CodeBase;
+            auto uri = gcnew UriBuilder(codeBase);
+            auto path = Uri::UnescapeDataString(uri->Path);
+            s_ironPythonInstallPath = Path::GetDirectoryName(path);
+        }
 	}
 
     static System::Reflection::Assembly^ OnAssemblyResolve(Object^ sender, ResolveEventArgs^ args)
     {
         if (args->Name->StartsWith("IronPython,") && s_ironPythonInstallPath != nullptr) {
-            System::Reflection::Assembly^ pythonAssembly = 
-				System::Reflection::Assembly::LoadFrom(s_ironPythonInstallPath + "\\IronPython.dll");
+            Assembly^ pythonAssembly = 
+				Assembly::LoadFrom(s_ironPythonInstallPath + "\\IronPython.dll");
             return pythonAssembly;
         }
         else if (args->Name->StartsWith("Microsoft.Scripting,") && s_ironPythonInstallPath != nullptr) {
-            System::Reflection::Assembly^ msScriptingAssembly = 
-				System::Reflection::Assembly::LoadFrom(s_ironPythonInstallPath + "\\Microsoft.Scripting.dll");
+            Assembly^ msScriptingAssembly = 
+				Assembly::LoadFrom(s_ironPythonInstallPath + "\\Microsoft.Scripting.dll");
             return msScriptingAssembly;
         }
 		else if (args->Name->StartsWith("Microsoft.Dynamic,") && s_ironPythonInstallPath != nullptr) {
-			System::Reflection::Assembly^ msDynamicAssembly =
-				System::Reflection::Assembly::LoadFrom(s_ironPythonInstallPath + "\\Microsoft.Dynamic.dll");
+			Assembly^ msDynamicAssembly =
+				Assembly::LoadFrom(s_ironPythonInstallPath + "\\Microsoft.Dynamic.dll");
 			return msDynamicAssembly;
 		}
 		return nullptr;
@@ -61,27 +84,6 @@ void InitializeAppDomainResolve()
 		AppDomainCustomResolve^ setup = gcnew AppDomainCustomResolve();
 		s_initialized = true;
 	}
-}
-
-void ManagedTest()
-{
-    Microsoft::Scripting::Hosting::ScriptEngine^ scriptEngine = nullptr;
-
-    try
-    {
-        scriptEngine = IronPython::Hosting::Python::CreateEngine();
-        System::Object^ obj = scriptEngine->Execute("2 + 2");
-
-        System::String ^str = obj->ToString();
-        System::Console::WriteLine(str);
-    }
-    finally
-    {
-        if (scriptEngine)
-        {
-            delete scriptEngine;
-        }
-    }
 }
 
 // A built-in help for the extension dll
@@ -106,6 +108,43 @@ HRESULT CALLBACK help(IDebugClient5 *pClient, PCSTR args)
     return hr;
 }
 
+ref class PyGlobals
+{
+public:
+    static Microsoft::Scripting::Hosting::ScriptEngine^ s_scriptEngine = nullptr;
+    static Microsoft::Scripting::Hosting::ScriptScope^ s_scriptScope = nullptr;
+
+    static void InitializeGlobals()
+    {
+        if (!s_scriptEngine) 
+        {
+            // TODO: create appdomain
+            s_scriptEngine = IronPython::Hosting::Python::CreateEngine();
+            s_scriptScope = s_scriptEngine->CreateScope();
+        }
+    }
+};
+
+void ExecutePythonCommand(PyDebugContext &context, PCSTR args)
+{
+    try
+    {
+        PyGlobals::InitializeGlobals();
+
+        auto obj2 = PyGlobals::s_scriptEngine->Execute(gcnew System::String(args), PyGlobals::s_scriptScope);
+        if (obj2)
+        {
+            System::Console::WriteLine(obj2->ToString());
+        }
+    }
+    catch (Exception^ ex)
+    {
+        IntPtr ptrExeptionMessage = Marshal::StringToHGlobalAnsi(ex->ToString());
+        dprintf("Exception: %s\n", static_cast<char*>(ptrExeptionMessage.ToPointer()));
+        Marshal::FreeHGlobal(ptrExeptionMessage);
+    }
+}
+
 HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
 {
     HRESULT hr = S_OK;
@@ -118,19 +157,19 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
         hr = context.GetControl()->GetNumberProcessors(&processorCount);
         HR_THROWIFFAIL(hr);
 
-        ProcessorArchitecture actualProcessorType;
+        ::ProcessorArchitecture actualProcessorType;
         hr = context.GetControl()->GetActualProcessorType(reinterpret_cast<ULONG*>(&actualProcessorType));
         HR_THROWIFFAIL(hr);
 
-        ProcessorArchitecture effectiveProcessorType;
+        ::ProcessorArchitecture effectiveProcessorType;
         hr = context.GetControl()->GetEffectiveProcessorType(reinterpret_cast<ULONG*>(&effectiveProcessorType));
         HR_THROWIFFAIL(hr);
 
-        ProcessorArchitecture executingProcessorType;
+        ::ProcessorArchitecture executingProcessorType;
         hr = context.GetControl()->GetExecutingProcessorType(reinterpret_cast<ULONG*>(&executingProcessorType));
         HR_THROWIFFAIL(hr);
 
-        if (effectiveProcessorType == ProcessorArchitecture::X86)
+        if (effectiveProcessorType == ::ProcessorArchitecture::X86)
         {
             __declspec(align(16)) PY_CONTEXT_X86 threadContext_x86;
 
@@ -143,7 +182,7 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
             }
             HR_THROWIFFAIL(hr);
         }
-        else if (effectiveProcessorType == ProcessorArchitecture::X64)
+        else if (effectiveProcessorType == ::ProcessorArchitecture::X64)
         {
             __declspec(align(16)) PY_CONTEXT_X64 threadContext_x64;
 
@@ -152,8 +191,7 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
         }
 
         InitializeAppDomainResolve();
-        ManagedTest();
-
+        ExecutePythonCommand(context, args);
     }
     catch (ExtException ex)
     {
@@ -162,4 +200,3 @@ HRESULT CALLBACK py(IDebugClient5 *pClient, PCSTR args)
 
     return hr;
 }
-

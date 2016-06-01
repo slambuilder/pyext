@@ -76,12 +76,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
-
   <ItemDefinitionGroup>
     <ClCompile>
-      <PrecompiledHeader></PrecompiledHeader>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
       <Optimization Condition="'$(Configuration)'=='Debug'">Disabled</Optimization>
-      <Optimization Condition="'$(Configuration)'=='Release'">>MaxSpeed</Optimization>
+      <Optimization Condition="'$(Configuration)'=='Release'">&gt;MaxSpeed</Optimization>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>_WINDOWS;_USRDLL;PY_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
@@ -97,7 +97,6 @@
       <OptimizeReferences Condition="'$(Configuration)'=='Release'">true</OptimizeReferences>
     </Link>
   </ItemDefinitionGroup>
-
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <PreprocessorDefinitions>WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -135,14 +134,16 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="IronPython">
-	  <Private>False</Private>
-    </Reference>
-    <Reference Include="Microsoft.Scripting">
-	  <Private>False</Private>
+      <HintPath>..\external\x64\IronPython.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Dynamic">
-	  <Private>False</Private>
+      <HintPath>..\external\x64\Microsoft.Dynamic.dll</HintPath>
     </Reference>
+    <Reference Include="Microsoft.Scripting">
+      <HintPath>..\external\x64\Microsoft.Scripting.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
